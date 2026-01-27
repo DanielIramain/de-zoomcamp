@@ -13,7 +13,10 @@ WORKDIR /code
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy dependency files first (better layer caching) from the current directory (./)
-COPY "pyproject.toml" "uv.lock" ".python-version" ./
+COPY pyproject.toml uv.lock .python-version ./
+
+# Copy data directory
+COPY data/ ./data/
 
 # Install dependencies from lock file.
 # Ensures reproducible builds
