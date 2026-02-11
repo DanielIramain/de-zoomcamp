@@ -1,4 +1,11 @@
 services:
+  ingest_script:
+    build: .
+    env_file:
+      - .env
+    depends_on:
+      - pgdatabase
+
   pgdatabase:
     image: postgres:18
     environment:
