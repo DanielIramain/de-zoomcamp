@@ -1,7 +1,6 @@
 # !/usr/bin/env python
 # coding: utf-8
 
-import os
 import click
 import pandas as pd
 from sqlalchemy import create_engine
@@ -33,8 +32,8 @@ parse_dates = [
 
 
 @click.command()
-@click.option('--pg-user', default=os.environ.get('DB_USER'), help='PostgreSQL user')
-@click.option('--pg-pass', default=os.environ.get('DB_PASS'), help='PostgreSQL password')
+@click.option('--pg-user', default='root', help='PostgreSQL user')
+@click.option('--pg-pass', default='root', help='PostgreSQL password')
 @click.option('--pg-host', default='localhost', help='PostgreSQL host')
 @click.option('--pg-port', default=5432, type=int, help='PostgreSQL port')
 @click.option('--pg-db', default='ny_taxi', help='PostgreSQL database name')
