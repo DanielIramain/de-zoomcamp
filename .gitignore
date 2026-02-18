@@ -2,6 +2,7 @@
 *.parquet
 *.csv
 *.json
+*db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -256,3 +257,8 @@ terraform.rc
 # Optional: ignore plan files saved before destroying Terraform configuration
 # Uncomment the line below if you want to ignore planout files.
 # planout
+.bruin.yml
+logs/runs
+logs/*.log
+*.py[cod]
+logs/queries
