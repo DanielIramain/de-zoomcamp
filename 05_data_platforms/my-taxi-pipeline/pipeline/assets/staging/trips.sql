@@ -6,11 +6,11 @@
 # - Custom checks: https://getbruin.com/docs/bruin/quality/custom
 
 # TODO: Set the asset name (recommended: staging.trips).
-name: TODO_SET_ASSET_NAME
+name: staging.trips
 # TODO: Set platform type.
 # Docs: https://getbruin.com/docs/bruin/assets/sql
 # suggested type: duckdb.sql
-type: TODO
+type: duckdb.sql
 
 # TODO: Declare dependencies so `bruin run ... --downstream` and lineage work.
 # Examples:
@@ -18,8 +18,8 @@ type: TODO
 #   - ingestion.trips
 #   - ingestion.payment_lookup
 depends:
-  - TODO_DEP_1
-  - TODO_DEP_2
+  - ingestion.trips
+  - ingestion.payment_lookup
 
 # TODO: Choose time-based incremental processing if the dataset is naturally time-windowed.
 # - This module expects you to use `time_interval` to reprocess only the requested window.
@@ -47,36 +47,42 @@ materialization:
   # - delete+insert (refresh partitions based on incremental_key values)
   # - merge (upsert based on primary key)
   # - time_interval (refresh rows within a time window)
-  strategy: TODO
+  strategy: time_interval
   # TODO: set incremental_key to your event time column (DATE or TIMESTAMP).
-  incremental_key: TODO_SET_INCREMENTAL_KEY
+  incremental_key: pickup_datetime
   # TODO: choose `date` vs `timestamp` based on the incremental_key type.
-  time_granularity: TODO_SET_GRANULARITY
+  time_granularity: timestamp
 
-# TODO: Define output columns, mark primary keys, and add a few checks.
 columns:
-  - name: TODO_pk1
-    type: TODO
-    description: TODO
+  - name: pickup_datetime
+    type: timestamp
     primary_key: true
-    nullable: false
     checks:
       - name: not_null
-  - name: TODO_metric
-    type: TODO
-    description: TODO
-    checks:
-      - name: non_negative
+  - name: dropoff_datetime
+    type: timestamp
+    primary_key: true
+  - name: vendor_id
+    type: integer
+    primary_key: true
+  - name: passenger_count
+    type: integer
+  - name: trip_distance
+    type: float
+  - name: fare_amount
+    type: float
+  - name: payment_type_description
+    type: string
+  - name: taxi_type
+    type: string
 
 # TODO: Add one custom check that validates a staging invariant (uniqueness, ranges, etc.)
 # Docs: https://getbruin.com/docs/bruin/quality/custom
 custom_checks:
-  - name: TODO_custom_check_name
-    description: TODO
-    query: |
-      -- TODO: return a single scalar (COUNT(*), etc.) that should match `value`
-      SELECT 0
-    value: 0
+  - name: row_count_positive
+    description: ensures table is not empty after processing
+    query: SELECT COUNT(*) > 0 FROM staging.trips
+    value: 1
 
 @bruin */
 
@@ -87,15 +93,49 @@ custom_checks:
 -- - Deduplicate records (important if ingestion uses append strategy)
 -- - Enrich with lookup tables (JOINs)
 -- - Filter invalid rows (null PKs, negative values, etc.)
---
--- Why filter by {{ start_datetime }} / {{ end_datetime }}?
--- When using `time_interval` strategy, Bruin:
---   1. DELETES rows where `incremental_key` falls within the run's time window
---   2. INSERTS the result of your query
--- Therefore, your query MUST filter to the same time window so only that subset is inserted.
--- If you don't filter, you'll insert ALL data but only delete the window's data = duplicates.
 
-SELECT *
-FROM ingestion.trips
-WHERE pickup_datetime >= '{{ start_datetime }}'
-  AND pickup_datetime < '{{ end_datetime }}'
+-- 1. Limpieza y Normalización
+-- Manejamos la diferencia de nombres de columnas entre Yellow y Green taxis
+WITH normalized_trips AS (
+    SELECT
+        lpep_pickup_datetime AS pickup_datetime,
+        lpep_dropoff_datetime AS dropoff_datetime,
+        vendor_id,
+        passenger_count,
+        trip_distance,
+        fare_amount,
+        taxi_type
+    FROM ingestion.trips
+    WHERE 
+        -- Filtramos registros con fechas inválidas para el intervalo actual
+        pickup_datetime BETWEEN '{{ start_date }}' AND '{{ end_date }}'
+        AND vendor_id IS NOT NULL
+),
+
+-- 2. Deduplicación mediante Clave Compuesta
+-- Dado que no hay ID único, usamos pickup, dropoff, vendor y distance
+deduplicated_trips AS (
+    SELECT 
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY pickup_datetime, dropoff_datetime, vendor_id, trip_distance 
+            ORDER BY pickup_datetime
+        ) as row_num
+    FROM normalized_trips
+    QUALIFY row_num = 1
+)
+
+-- 3. Enriquecimiento con tabla de búsqueda (JOIN)
+-- Unimos con la tabla de semillas para obtener la descripción del pago
+SELECT
+    t.pickup_datetime,
+    t.dropoff_datetime,
+    t.vendor_id,
+    t.passenger_count,
+    t.trip_distance,
+    t.fare_amount,
+    p.payment_type_name AS payment_type_description,
+    t.taxi_type
+FROM deduplicated_trips t
+LEFT JOIN ingestion.payment_lookup p 
+ON t.vendor_id = p.payment_type_id; -- Ajusta según la columna real de tu CSV de pagos
