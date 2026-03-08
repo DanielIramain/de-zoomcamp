@@ -94,8 +94,9 @@ custom_checks:
 -- - Enrich with lookup tables (JOINs)
 -- - Filter invalid rows (null PKs, negative values, etc.)
 
--- 1. Limpieza y Normalización
--- Manejamos la diferencia de nombres de columnas entre Yellow y Green taxis
+-- 1. Clean and normalization
+-- Yellow and Green taxis name the same columns differently, 
+-- We standardize to a common schema.
 WITH normalized_trips AS (
     SELECT
         lpep_pickup_datetime AS pickup_datetime,
@@ -107,13 +108,13 @@ WITH normalized_trips AS (
         taxi_type
     FROM ingestion.trips
     WHERE 
-        -- Filtramos registros con fechas inválidas para el intervalo actual
+        -- date filter based on pickup_datetime and incremental_key
         pickup_datetime BETWEEN '{{ start_date }}' AND '{{ end_date }}'
         AND vendor_id IS NOT NULL
 ),
 
--- 2. Deduplicación mediante Clave Compuesta
--- Dado que no hay ID único, usamos pickup, dropoff, vendor y distance
+-- 2. Deduplication: 
+-- since there is no unique ID we use pickup, dropoff, vendor and distance
 deduplicated_trips AS (
     SELECT 
         *,
@@ -125,8 +126,7 @@ deduplicated_trips AS (
     QUALIFY row_num = 1
 )
 
--- 3. Enriquecimiento con tabla de búsqueda (JOIN)
--- Unimos con la tabla de semillas para obtener la descripción del pago
+-- 3. JOIN: payment description
 SELECT
     t.pickup_datetime,
     t.dropoff_datetime,
@@ -138,4 +138,4 @@ SELECT
     t.taxi_type
 FROM deduplicated_trips t
 LEFT JOIN ingestion.payment_lookup p 
-ON t.vendor_id = p.payment_type_id; -- Ajusta según la columna real de tu CSV de pagos
+ON t.vendor_id = p.payment_type_id;

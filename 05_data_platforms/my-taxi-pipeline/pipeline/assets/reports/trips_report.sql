@@ -65,10 +65,12 @@ columns:
 -- - Filter using `{{ start_datetime }}` / `{{ end_datetime }}` for incremental runs
 -- - GROUP BY your dimension + date columns
 
--- Propósito: Agregar datos de staging para dashboards y analítica
--- Filtramos por el intervalo de tiempo para permitir ejecuciones incrementales
+-- Data for this report is sourced from the `staging.trips` asset, 
+-- which is already filtered by the same time window for consistency. 
+-- This allows us to efficiently update only the relevant partitions of the report when new data arrives.
+-- We filter by time interval in both the staging and report layers to ensure that we only process the necessary data for each run, optimizing performance while keeping the report up-to-date with the latest trip information.
 SELECT
-    -- Truncamos la fecha para agrupar por día
+    -- Truncate datetime to date for daily aggregation (or keep as is for finer granularity)
     CAST(pickup_datetime AS DATE) AS pickup_date,
     taxi_type,
     payment_type_description,
@@ -80,7 +82,7 @@ SELECT
 FROM staging.trips
 
 WHERE 
-    -- Filtros dinámicos de Bruin para procesamiento incremental
+    -- Dinamic filters from Bruin for incremental processing
     pickup_datetime >= '{{ start_datetime }}'
     AND pickup_datetime < '{{ end_datetime }}'
 
